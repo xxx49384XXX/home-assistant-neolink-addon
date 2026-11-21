@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1.1 (MagiCam fork)
+- Host network: Wi-Fi battery cameras are found on the LAN (local discovery), so live video goes
+  straight from the camera to Home Assistant instead of through Reolink's relay servers. RTSP is
+  on the host's port 8564 as before; the WebSocket API listens on 127.0.0.1:3002 only.
+- Argus MagiCam: RecordCfg answers with negative `cyclelist` values, which dropped the connection
+  right after every login (patch 0006: those fields are now signed).
+- A message whose payload is not readable XML no longer drops the connection (patch 0027). The
+  MagiCam's answer to the push registration (PushInfo, 124) is still not understood, so use
+  `push: false` with this camera.
+
 ## 0.4.1
 - Talking through the camera's speaker no longer lags and breaks up. The app waited for the
   camera's answer to every 64 ms of sound before sending the next; over 4G that answer takes

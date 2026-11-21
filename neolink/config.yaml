@@ -1,5 +1,5 @@
 name: Neolink (MagiCam fix)
-version: "0.4.1"
+version: "0.4.1.1"
 slug: neolink
 description: Bridge for Reolink cameras without a local API (battery, 4G LTE) with a WebSocket API for the Neolink integration.
 url: https://github.com/witold-gren/home-assistant-neolink-addon
@@ -14,12 +14,11 @@ map:
   - media:rw
 discovery:
   - neolink
-ports:
-  8554/tcp: 8564
-  3002/tcp: null
-ports_description:
-  8554/tcp: RTSP (camera video, with the password announced to the integration)
-  3002/tcp: WebSocket API (by default only inside the HA network)
+# Host network: Neolink finds Wi-Fi battery cameras on the LAN by UDP broadcast (local discovery),
+# so live video goes straight from the camera to Home Assistant instead of through Reolink's relay
+# servers. RTSP listens on 8564 on every interface (password protected); the WebSocket API only on
+# 127.0.0.1:3002, where Home Assistant (also on the host network) reaches it.
+host_network: true
 options:
   log_level: info
   battery_minutes: 30

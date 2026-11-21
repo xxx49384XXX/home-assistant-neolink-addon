@@ -5,7 +5,8 @@ set -euo pipefail
 OPTIONS=/data/options.json
 CONFIG=/data/neolink.toml
 WS_PORT=3002
-RTSP_PORT=8554
+# Host network: these are the host's ports (RTSP was 8554 inside the container, published as 8564)
+RTSP_PORT=8564
 log() { echo "[neolink-addon] $*"; }
 
 # API token and RTSP password: random on the first start, then kept (the integration knows them).
@@ -26,6 +27,7 @@ jq -r --argjson push "$(jq '.push' "${OPTIONS}")" --arg token "${WS_TOKEN}" --ar
     "bind_port = '"${RTSP_PORT}"'",
     "",
     "[websocket]",
+    "bind = \"127.0.0.1\"",
     "port = '"${WS_PORT}"'",
     "token = \($token | s)",
     "battery_update = \(.battery_minutes * 60000)",
@@ -66,8 +68,8 @@ announce() {
         curl -fsS "http://127.0.0.1:${WS_PORT}/healthz" >/dev/null 2>&1 && break
         sleep 1
     done
-    local host
-    host=$(curl -fsS -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" http://supervisor/addons/self/info | jq -r '.data.hostname')
+    # Host network: Home Assistant runs on the host network too and reaches the API on localhost
+    local host=127.0.0.1
     jq -n --arg host "${host}" --arg token "${WS_TOKEN}" --arg ruser "${RTSP_USER}" --arg rpass "${RTSP_PASSWORD}" \
         --argjson port "${WS_PORT}" --argjson rport "${RTSP_PORT}" \
         '{service: "neolink", config: {host: $host, port: $port, token: $token,
