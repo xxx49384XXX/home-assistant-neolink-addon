@@ -1,0 +1,82 @@
+From 41ee373df2684b72cf42f6f588dc227db4659e6f Mon Sep 17 00:00:00 2001
+From: neolink-addon <neolink-addon@localhost>
+Date: Sat, 21 Nov 2026 11:05:56 -0500
+Subject: [PATCH 27/27] core: an unreadable XML payload no longer drops the
+ connection
+
+The Argus MagiCam answers PushInfo (124) with a payload that does not
+decrypt to XML. The parse error dropped the whole connection, and the
+push registration, retried after every reconnect, then cut every live
+view off (reconnecting every 1-3 s, no frame ever reached the client).
+The message is complete at that point (its length is in the header), so
+log a warning and deliver it without a payload; callers still get the
+response code.
+---
+ Cargo.lock               | Bin 124106 -> 123974 bytes
+ crates/core/src/bc/de.rs |  39 ++++++++++++++++++++++++---------------
+ 2 files changed, 24 insertions(+), 15 deletions(-)
+
+diff --git a/Cargo.lock b/Cargo.lock
+index 376edaa235633df1d0b9e03833dcb97ae1d0b137..7efe0a7988f8c72d6ae0d189feba7c3c2cb2f67e 100644
+GIT binary patch
+delta 41
+zcmV+^0M`G?$p^;B2e5f*lLV#{lYeLmlS}3dlg}Uqvo~rxd<AH7Z*Fh1Z0276f;bX|
+
+delta 105
+zcmV-v0G9v8$Op>F2e5f*ljj9ZKV~p6Wi~lBG&5r`HDfb0V`4NhV>B=|HZeG1IXN?A
+zVP#}wH)LXEGdX25G-PBnG+{L|F*Y_cF*q|aWo2Pumr)b}7MHL@0Sc46<qVV0AO^Fj
+LX*+zg?&VniLA4~;
+
+diff --git a/crates/core/src/bc/de.rs b/crates/core/src/bc/de.rs
+index 1dd3f1d..c78db20 100644
+--- a/crates/core/src/bc/de.rs
++++ b/crates/core/src/bc/de.rs
+@@ -202,21 +202,30 @@ fn bc_modern_msg<'a>(
+                         .unwrap_or("Not Text".to_string())
+                 );
+             }
+-            let xml = BcXml::try_parse(processed_payload_buf.as_slice()).map_err(|e| {
+-                error!("header.msg_id: {}", header.msg_id);
+-                error!(
+-                    "processed_payload_buf: {:X?}::{:?}",
+-                    processed_payload_buf,
+-                    std::str::from_utf8(&processed_payload_buf)
+-                );
+-                log::error!("e: {:?}", e);
+-                Err::Error(make_error(
+-                    buf,
+-                    "Unable to parse Payload XML",
+-                    ErrorKind::MapRes,
+-                ))
+-            })?;
+-            payload = Some(BcPayloads::BcXml(xml));
++            payload = match BcXml::try_parse(processed_payload_buf.as_slice()) {
++                Ok(xml) => Some(BcPayloads::BcXml(xml)),
++                Err(e) => {
++                    // The whole message has been read (its length is in the header), so a
++                    // payload that is not readable XML does not desync the stream. Failing here
++                    // dropped the connection instead: the Argus MagiCam answers PushInfo (124)
++                    // with a payload that does not decrypt to XML, and the push registration,
++                    // retried after every reconnect, then cut every live view off. Deliver the
++                    // message without a payload; its response code still reaches the caller.
++                    warn!(
++                        "msg {} (num {}, code {}): payload is not readable XML, ignoring it: {:?}",
++                        header.msg_id,
++                        header.msg_num,
++                        header.response_code,
++                        e
++                    );
++                    debug!(
++                        "processed_payload_buf: {:X?}::{:?}",
++                        processed_payload_buf,
++                        std::str::from_utf8(&processed_payload_buf)
++                    );
++                    None
++                }
++            };
+         }
+     } else {
+         payload = None;
+-- 
+2.56.1
+
