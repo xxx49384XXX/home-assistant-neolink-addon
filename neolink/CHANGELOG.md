@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1.6 (MagiCam fork)
+- With `motion: false`, the camera's own motion detection no longer keeps a battery camera
+  awake (patch 0030, `stay_awake_on_motion`). An Argus MagiCam reported motion from the moment
+  it connected until 80 minutes later and stayed connected all that time, with nothing using
+  those events. The camera now sleeps 30 s after its last real use (live view, snapshot,
+  command). With `motion: true` nothing changes.
+- Debug log: the use count and the battery-saving decisions (patch 0029, 0.4.1.5), and the
+  camera's alarm events with their motion status and AI type (patch 0031).
+
 ## 0.4.1.4 (MagiCam fork)
 - An idle battery camera found by local discovery now sleeps 30 s after its last use (patch
   0028). The battery-saving loop waited for the next user before counting down, but the reads

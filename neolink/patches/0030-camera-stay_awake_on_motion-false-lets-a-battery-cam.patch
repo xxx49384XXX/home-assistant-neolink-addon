@@ -1,0 +1,63 @@
+From 0378f3613bb6008b410bab05b0694399992a6623 Mon Sep 17 00:00:00 2001
+From: neolink-addon <neolink-addon@localhost>
+Date: Sat, 21 Nov 2026 14:45:20 -0500
+Subject: [PATCH 30/30] camera: stay_awake_on_motion = false lets a battery camera
+ sleep during motion
+
+The motion permit kept a camera connected from a motion start until the
+camera reported the stop, even when nothing used its motion events. An
+Argus MagiCam found by local discovery reported motion from the moment it
+connected (12:18) until 80 minutes later (13:38), so with idle_disconnect
+it stayed awake all that time, with no live view, no MQTT and the
+WebSocket API's enable_motion off.
+
+New per-camera option stay_awake_on_motion (default true, the old
+behaviour). When false, motion takes no permit, so idle_disconnect lets
+the camera sleep 30 s after its last real user.
+---
+ src/common/neocam.rs | 10 ++++++++++
+ src/config.rs        |  7 +++++++
+ 2 files changed, 17 insertions(+)
+
+diff --git a/src/common/neocam.rs b/src/common/neocam.rs
+index 85f92d3..52cfd90 100644
+--- a/src/common/neocam.rs
++++ b/src/common/neocam.rs
+@@ -313,6 +313,16 @@ impl NeoCam {
+                     let mut md = md_permit_instance.motion().await.with_context(|| "Unable to acquire motion watcher")?;
+                     loop{
+                         md.wait_for(|md| matches!(md, MdState::Start(_))).await.with_context(|| "MD Watcher lost")?;
++                        let md_config = md_permit_instance.config().await?.borrow().clone();
++                        if !md_config.stay_awake_on_motion {
++                            // Nothing uses this camera's own motion events: let it sleep anyway.
++                            // An Argus MagiCam reported motion from the moment it connected until
++                            // 80 minutes later, and the permit kept it awake all that time.
++                            log::debug!("{}: motion started; not keeping the camera awake for it (stay_awake_on_motion = false)", md_config.name);
++                            md.wait_for(|md| matches!(md, MdState::Stop(_))).await.with_context(|| "MD Watcher lost")?;
++                            log::debug!("{}: motion stopped", md_config.name);
++                            continue;
++                        }
+                         let _permit = md_permit_instance.permit().await.with_context(|| "Unuable to acquire motion permit")?;
+                         log::debug!("motion started: the camera stays connected until it stops");
+                         md.wait_for(|md| matches!(md, MdState::Stop(_))).await.with_context(|| "MD Watcher lost")?;
+diff --git a/src/config.rs b/src/config.rs
+index a4d9e47..e8f88ec 100644
+--- a/src/config.rs
++++ b/src/config.rs
+@@ -299,6 +299,13 @@ pub(crate) struct CameraConfig {
+ 
+     #[serde(default = "default_false", alias = "idle", alias = "idle_disc")]
+     pub(crate) idle_disconnect: bool,
++
++    /// Keep the camera connected while it reports motion (the default). With `idle_disconnect`
++    /// a battery camera then stays awake for as long as its own motion detection reports motion,
++    /// which can be an hour or more. Switch it off when nothing uses the camera's own motion
++    /// events (MQTT motion, `pause.on_motion`, the WebSocket API's `enable_motion`).
++    #[serde(default = "default_true")]
++    pub(crate) stay_awake_on_motion: bool,
+ }
+ 
+ #[derive(Debug, Deserialize, Serialize, Validate, Clone, PartialEq, Eq, Hash)]
+-- 
+2.54.0 (Apple Git-157)
+

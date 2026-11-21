@@ -68,6 +68,8 @@ camera. Talking wakes the camera; over 4G expect a delay of a second or two.
   even while it sleeps; the motion sensor in HA stays on for `motion_seconds` (default 30 s). Turning
   PIR off in the camera (the "PIR sensor" switch) silences the notifications too.
 - `motion: false` — extra motion listening while the camera is connected; enable deliberately.
+  When on, the camera's own motion also keeps it connected (awake) until it reports the motion
+  over, which can take a long time; when off, motion never keeps a battery camera awake.
 
 ## Password
 `password` is the **device** password set in the Reolink app, often different from the account

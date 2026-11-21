@@ -20,7 +20,7 @@ WS_TOKEN=$(secret ws_token)
 RTSP_USER=ha
 RTSP_PASSWORD=$(secret rtsp_password)
 
-jq -r --argjson push "$(jq '.push' "${OPTIONS}")" --arg token "${WS_TOKEN}" --arg ruser "${RTSP_USER}" --arg rpass "${RTSP_PASSWORD}" '
+jq -r --argjson push "$(jq '.push' "${OPTIONS}")" --argjson motion "$(jq '.motion' "${OPTIONS}")" --arg token "${WS_TOKEN}" --arg ruser "${RTSP_USER}" --arg rpass "${RTSP_PASSWORD}" '
   def s: tojson;
   [
     "bind = \"0.0.0.0\"",
@@ -51,6 +51,9 @@ jq -r --argjson push "$(jq '.push' "${OPTIONS}")" --arg token "${WS_TOKEN}" --ar
       "discovery = \(.discovery | s)",
       "stream = \(.stream | s)",
       "idle_disconnect = \(.idle_disconnect)",
+      # Motion detected by the camera keeps it awake only with motion on (patch 0030); with
+      # motion off nothing uses those events, and a battery camera stayed awake for an hour.
+      "stay_awake_on_motion = \($motion)",
       # Motion from Reolink push notifications (Firebase); the camera does not have to be connected.
       "push_notifications = \($push)",
       ""
@@ -89,7 +92,7 @@ mkdir -p "${XDG_CONFIG_HOME}"
 # otherwise network messages flood the log. The filter matches by prefix, hence the exceptions.
 LOG_LEVEL="$(jq -r '.log_level' "${OPTIONS}")"
 if [ "${LOG_LEVEL}" = "debug" ]; then
-  export RUST_LOG="info,neolink=debug,neolink_core=info,neolink_decoder=info"
+  export RUST_LOG="info,neolink=debug,neolink_core=info,neolink_core::bc_protocol::motion=debug,neolink_decoder=info"
   log "Log: debug for Neolink (look for 'push payload:' lines after motion)"
 else
   export RUST_LOG="${LOG_LEVEL}"

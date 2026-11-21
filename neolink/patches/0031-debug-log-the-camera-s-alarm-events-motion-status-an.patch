@@ -1,0 +1,31 @@
+From 1eee50c64dc422e4de4d162837f76b3eb4fb90ff Mon Sep 17 00:00:00 2001
+From: neolink-addon <neolink-addon@localhost>
+Date: Sat, 21 Nov 2026 14:47:17 -0500
+Subject: [PATCH 31/31] debug: log the camera's alarm events (motion status and AI
+ type)
+
+Any status other than "none" counts as motion. Logging what the camera
+actually sends shows why a camera is considered in motion.
+---
+ crates/core/src/bc_protocol/motion.rs | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/crates/core/src/bc_protocol/motion.rs b/crates/core/src/bc_protocol/motion.rs
+index d910ee4..12be862 100644
+--- a/crates/core/src/bc_protocol/motion.rs
++++ b/crates/core/src/bc_protocol/motion.rs
+@@ -239,6 +239,11 @@ impl BcCamera {
+                                     let mut result = MotionStatus::NoChange(Instant::now());
+                                     for alarm_event in &alarm_event_list.alarm_events {
+                                         if alarm_event.channel_id == channel_id {
++                                            log::debug!(
++                                                "alarm event: status {:?}, AI type {:?}",
++                                                alarm_event.status,
++                                                alarm_event.ai_type
++                                            );
+                                             if alarm_event.status != "none"
+                                                 || alarm_event
+                                                     .ai_type
+-- 
+2.54.0 (Apple Git-157)
+
