@@ -1,5 +1,5 @@
 name: Neolink (MagiCam fix)
-version: "0.4.1.4"
+version: "0.4.1.5"
 slug: neolink
 description: Bridge for Reolink cameras without a local API (battery, 4G LTE) with a WebSocket API for the Neolink integration.
 url: https://github.com/witold-gren/home-assistant-neolink-addon

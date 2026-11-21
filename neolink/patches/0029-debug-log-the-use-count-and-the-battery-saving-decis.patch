@@ -1,0 +1,76 @@
+From 9ac86f559ee98f43221abcbbd664c23ba0f4a58a Mon Sep 17 00:00:00 2001
+From: neolink-addon <neolink-addon@localhost>
+Date: Sat, 21 Nov 2026 12:09:46 -0500
+Subject: [PATCH 29/29] debug: log the use count and the battery-saving decisions
+
+The use counter only logged at trace level, which release builds
+compile out, so nothing showed why a battery camera stayed awake.
+---
+ src/common/neocam.rs     | 12 +++++++++++-
+ src/common/usecounter.rs |  4 ++--
+ 2 files changed, 13 insertions(+), 3 deletions(-)
+
+diff --git a/src/common/neocam.rs b/src/common/neocam.rs
+index 80cc5d1..85f92d3 100644
+--- a/src/common/neocam.rs
++++ b/src/common/neocam.rs
+@@ -314,7 +314,9 @@ impl NeoCam {
+                     loop{
+                         md.wait_for(|md| matches!(md, MdState::Start(_))).await.with_context(|| "MD Watcher lost")?;
+                         let _permit = md_permit_instance.permit().await.with_context(|| "Unuable to acquire motion permit")?;
++                        log::debug!("motion started: the camera stays connected until it stops");
+                         md.wait_for(|md| matches!(md, MdState::Stop(_))).await.with_context(|| "MD Watcher lost")?;
++                        log::debug!("motion stopped");
+                         // Try waiting for 30s
+                         // If in those 30s we get motion then return to
+                         // loop early to reaquire the permit
+@@ -358,6 +360,8 @@ impl NeoCam {
+                             v = async {
+                                 let mut permit = connect_instance.permit().await?;
+                                 permit.deactivate().await?; // Watching only from here
++                                let idle_name = connect_instance.config().await?.borrow().name.clone();
++                                log::debug!("{idle_name}: battery saving: watching the use count");
+                                 loop {
+                                     // Start from "nobody uses the camera" rather than waiting
+                                     // for the next user: the reads after the first connection
+@@ -365,13 +369,19 @@ impl NeoCam {
+                                     // discovery answers at once), and the camera then stayed
+                                     // connected with no user, i.e. a battery camera never slept.
+                                     permit.dropped_users().await?;
++                                    log::debug!("{idle_name}: battery saving: no users, disconnecting in 30 s");
+                                     // Wait 30s or if we hit another use then go back and wait again
+                                     tokio::select! {
+                                         _ = sleep(Duration::from_secs(30)) => {},
+-                                        _ = permit.aquired_users() => continue,
++                                        _ = permit.aquired_users() => {
++                                            log::debug!("{idle_name}: battery saving: a user came back, staying connected");
++                                            continue
++                                        },
+                                     };
++                                    log::debug!("{idle_name}: battery saving: disconnecting");
+                                     connect_instance.disconnect().await?;
+                                     permit.aquired_users().await?;
++                                    log::debug!("{idle_name}: battery saving: a user needs the camera, connecting");
+                                     connect_instance.connect().await?;
+                                 }
+                             } => v,
+diff --git a/src/common/usecounter.rs b/src/common/usecounter.rs
+index d1f84a9..3c19e73 100644
+--- a/src/common/usecounter.rs
++++ b/src/common/usecounter.rs
+@@ -35,10 +35,10 @@ impl UseCounter {
+                     while let Some(noti) = notifier.recv().await {
+                         value_tx.send_modify(|value| {
+                             if noti {
+-                                log::trace!("Usecounter: {}->{}", *value, (*value) + 1);
++                                log::debug!("Usecounter: {}->{}", *value, (*value) + 1);
+                                 *value += 1;
+                             } else {
+-                                log::trace!("Usecounter: {}->{}", *value, (*value) - 1);
++                                log::debug!("Usecounter: {}->{}", *value, (*value) - 1);
+                                 *value -= 1;
+                             }
+                         });
+-- 
+2.56.1
+
