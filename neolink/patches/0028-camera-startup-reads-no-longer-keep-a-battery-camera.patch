@@ -1,0 +1,121 @@
+From 665be2cbf8b9894ac02fabb7fdac9823defecf01 Mon Sep 17 00:00:00 2001
+From: neolink-addon <neolink-addon@localhost>
+Date: Sat, 21 Nov 2026 11:39:02 -0500
+Subject: [PATCH 28/28] camera: startup reads no longer keep a battery camera awake
+ for good
+
+The one-time reads after connecting (model, stream list, UID) run as
+tasks with a use permit and had no time limit. An Argus MagiCam found
+by local discovery never let one of them finish, so the permit was
+never dropped and idle_disconnect never let the camera sleep (still
+connected 5 minutes after start with no client; over the relay it
+disconnected after 30 s). Give up on them after 30 s.
+---
+ src/common/neocam.rs | 60 +++++++++++++++++++++++++++++---------------
+ 1 file changed, 40 insertions(+), 20 deletions(-)
+
+diff --git a/src/common/neocam.rs b/src/common/neocam.rs
+index 8633eed..123c12b 100644
+--- a/src/common/neocam.rs
++++ b/src/common/neocam.rs
+@@ -14,7 +14,7 @@ use tokio::{
+         watch::{channel as watch, Receiver as WatchReceiver, Sender as WatchSender},
+     },
+     task::JoinSet,
+-    time::{sleep, Duration},
++    time::{sleep, timeout, Duration},
+ };
+ use tokio_stream::wrappers::ReceiverStream;
+ use tokio_util::sync::CancellationToken;
+@@ -28,6 +28,11 @@ use super::{PnRequest, PushNoti};
+ use crate::{config::CameraConfig, AnyResult, Result};
+ use neolink_core::bc_protocol::BcCamera;
+ 
++/// How long the one-time reads after connecting (model, streams, UID) may hold the camera awake.
++/// Each runs as a task with a use permit; a battery camera that never answered one of them was
++/// kept connected for good (seen on an Argus MagiCam found by local discovery).
++const STARTUP_READ_LIMIT: Duration = Duration::from_secs(30);
++
+ #[allow(dead_code)]
+ pub(crate) enum NeoCamCommand {
+     HangUp,
+@@ -204,26 +209,33 @@ impl NeoCam {
+                     AnyResult::Ok(())
+                 }
+                 v = async {
+-                    let version = report_instance.run_task(|cam| Box::pin(
+-                        async move {
+-                            Ok(cam.version().await?)
+-                        }
+-                    )).await?;
+-                    log::info!("{}: Model {}", report_name, version.model.unwrap_or("Undeclared".to_string()));
+-                    log::info!("{}: Firmware Version {}", report_name, version.firmwareVersion);
++                    let report = async {
++                        let version = report_instance.run_task(|cam| Box::pin(
++                            async move {
++                                Ok(cam.version().await?)
++                            }
++                        )).await?;
++                        log::info!("{}: Model {}", report_name, version.model.unwrap_or("Undeclared".to_string()));
++                        log::info!("{}: Firmware Version {}", report_name, version.firmwareVersion);
+ 
+-                    let stream_info = report_instance.run_task(|cam| Box::pin(
+-                        async move {
+-                            Ok(cam.get_stream_info().await?)
++                        let stream_info = report_instance.run_task(|cam| Box::pin(
++                            async move {
++                                Ok(cam.get_stream_info().await?)
++                            }
++                        )).await?;
++                        let mut supported_streams = vec![];
++                        for encode in stream_info.stream_infos.iter().flat_map(|stream_info| stream_info.encode_tables.clone()) {
++                            supported_streams.push(std::format!("    {}: {}x{}", encode.name, encode.resolution.width, encode.resolution.height));
++                        }
++                        AnyResult::Ok(())
++                    };
++                    match timeout(STARTUP_READ_LIMIT, report).await {
++                        Ok(r) => r,
++                        Err(_) => {
++                            log::warn!("{}: no answer to the model/stream query within {:?}, letting the camera sleep", report_name, STARTUP_READ_LIMIT);
++                            Ok(())
+                         }
+-                    )).await?;
+-                    let mut supported_streams = vec![];
+-                    for encode in stream_info.stream_infos.iter().flat_map(|stream_info| stream_info.encode_tables.clone()) {
+-                        supported_streams.push(std::format!("    {}: {}x{}", encode.name, encode.resolution.width, encode.resolution.height));
+                     }
+-
+-
+-                    Ok(())
+                 } => v
+             }
+         });
+@@ -232,6 +244,7 @@ impl NeoCam {
+         // We cache this in the uid_rx
+         let uid_instance = instance.clone();
+         let uid_cancel = me.cancel.clone();
++        let uid_name = config.name.clone();
+         me.set.spawn(async move {
+             tokio::select! {
+                 _ = uid_cancel.cancelled() => {
+@@ -241,8 +254,15 @@ impl NeoCam {
+                     let uid = uid_instance.run_task(|cam| Box::pin(async move {
+                         let uid = cam.uid().await?;
+                         Ok(uid)
+-                    })).await?;
+-                    uid_tx.send_replace(Some(uid));
++                    }));
++                    match timeout(STARTUP_READ_LIMIT, uid).await {
++                        Ok(uid) => {
++                            uid_tx.send_replace(Some(uid?));
++                        }
++                        Err(_) => {
++                            log::warn!("{}: no answer to the UID query within {:?}, letting the camera sleep", uid_name, STARTUP_READ_LIMIT);
++                        }
++                    }
+                     AnyResult::Ok(())
+                 } => v,
+             }
+-- 
+2.56.1
+
