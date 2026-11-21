@@ -1,4 +1,4 @@
-name: Neolink (Reolink battery & 4G cameras)
+name: Neolink (MagiCam fix)
 version: "0.4.1"
 slug: neolink
 description: Bridge for Reolink cameras without a local API (battery, 4G LTE) with a WebSocket API for the Neolink integration.

@@ -84,7 +84,7 @@ index 3986ae0..e194767 100644
 +    pub channel_id: u8,
 +    /// Overwrite the oldest recordings when the card is full
 +    #[serde(default, skip_serializing_if = "Option::is_none")]
-+    pub cycle: Option<u8>,
++    pub cycle: Option<i32>,
 +    /// Seconds recorded after the detection ended
 +    #[serde(rename = "recordDelayTime")]
 +    pub record_delay_time: u32,
@@ -107,7 +107,7 @@ index 3986ae0..e194767 100644
 +pub struct ItemList {
 +    /// The values
 +    #[serde(default)]
-+    pub item: Vec<u32>,
++    pub item: Vec<i32>,
 +}
 +
 +/// A list of `<time>` values
