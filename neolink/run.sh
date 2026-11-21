@@ -89,7 +89,7 @@ mkdir -p "${XDG_CONFIG_HOME}"
 # otherwise network messages flood the log. The filter matches by prefix, hence the exceptions.
 LOG_LEVEL="$(jq -r '.log_level' "${OPTIONS}")"
 if [ "${LOG_LEVEL}" = "debug" ]; then
-  export RUST_LOG="info,neolink=debug,neolink::common::usecounter=trace,neolink_core=info,neolink_decoder=info"
+  export RUST_LOG="info,neolink=debug,neolink_core=info,neolink_decoder=info"
   log "Log: debug for Neolink (look for 'push payload:' lines after motion)"
 else
   export RUST_LOG="${LOG_LEVEL}"

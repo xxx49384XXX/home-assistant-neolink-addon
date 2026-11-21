@@ -1,9 +1,9 @@
 # Changelog
 
-## 0.4.1.2 (MagiCam fork)
-- A battery camera is no longer kept awake for good by the one-time reads after connecting
-  (model, stream list, UID): they give up after 30 s (patch 0028). An Argus MagiCam found by local
-  discovery never let one of them finish, so it stayed connected with nobody watching.
+## 0.4.1.4 (MagiCam fork)
+- An idle battery camera found by local discovery now sleeps 30 s after its last use (patch
+  0028). The battery-saving loop waited for the next user before counting down, but the reads
+  after the first connection were already over by then, so the camera stayed connected for good.
 
 ## 0.4.1.1 (MagiCam fork)
 - Host network: Wi-Fi battery cameras are found on the LAN (local discovery), so live video goes

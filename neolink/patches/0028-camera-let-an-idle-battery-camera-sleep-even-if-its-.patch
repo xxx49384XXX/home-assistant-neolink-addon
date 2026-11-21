@@ -1,0 +1,47 @@
+From cbd87128de6fd32fe5f48a0341c00070d5d1b68d Mon Sep 17 00:00:00 2001
+From: neolink-addon <neolink-addon@localhost>
+Date: Sat, 21 Nov 2026 11:56:13 -0500
+Subject: [PATCH 28/28] camera: let an idle battery camera sleep even if its first
+ reads finished at once
+
+The battery-saving loop waited for the next user before it started its
+30 s countdown. The reads after the first connection could be over
+before the loop ran: an Argus MagiCam found by local discovery answers
+at once, so the loop waited for a user that never came and the camera
+stayed connected for good with nobody using it (over Reolink's relay
+the reads were still running and it slept after 30 s). Start from
+"nobody uses the camera" instead.
+---
+ src/common/neocam.rs | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/src/common/neocam.rs b/src/common/neocam.rs
+index 8633eed..80cc5d1 100644
+--- a/src/common/neocam.rs
++++ b/src/common/neocam.rs
+@@ -359,8 +359,11 @@ impl NeoCam {
+                                 let mut permit = connect_instance.permit().await?;
+                                 permit.deactivate().await?; // Watching only from here
+                                 loop {
+-                                    permit.aquired_users().await?;
+-                                    connect_instance.connect().await?;
++                                    // Start from "nobody uses the camera" rather than waiting
++                                    // for the next user: the reads after the first connection
++                                    // can be over before this loop runs (a camera found by local
++                                    // discovery answers at once), and the camera then stayed
++                                    // connected with no user, i.e. a battery camera never slept.
+                                     permit.dropped_users().await?;
+                                     // Wait 30s or if we hit another use then go back and wait again
+                                     tokio::select! {
+@@ -368,6 +371,8 @@ impl NeoCam {
+                                         _ = permit.aquired_users() => continue,
+                                     };
+                                     connect_instance.disconnect().await?;
++                                    permit.aquired_users().await?;
++                                    connect_instance.connect().await?;
+                                 }
+                             } => v,
+                         };
+-- 
+2.56.1
+
